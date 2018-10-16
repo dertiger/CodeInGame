@@ -4,7 +4,6 @@ import numpy as np
 
 # Bring data on patient samples from the diagnosis machine to the laboratory with enough molecules to produce medicine!
 
-
 class Sample:
     def __init__(self) -> None:
         super().__init__()
@@ -55,14 +54,80 @@ class Player:
                 return True
         return False
 
+players = [Player(0), Player(1)]
+samples = []
+available = []
+
+
+class Statemachine:
+    @staticmethod
+    def state_machine() -> str:
+        player_samples = players[0].get_carrying_samples()
+        if players[0].eta > 0:
+            return "WAIT"
+        elif players[0].target == "DIAGNOSIS":
+            unidentified_player_sample = [unidentified_player_sample for unidentified_player_sample in player_samples if
+                                          not unidentified_player_sample.identified]
+            if len(unidentified_player_sample) > 0:
+                unidentified_player_sample[0].identified = True
+                return "CONNECT " + str(unidentified_player_sample[0].sample_id)
+            else:
+                samples_with_insufficient_resources = [sample for sample in player_samples if
+                                                       players[0].check_insufficient_resources(sample, available)]
+                samples_with_insufficient_resources = np.asarray(samples_with_insufficient_resources)
+                if samples_with_insufficient_resources.any():
+                    return "CONNECT " + str(samples_with_insufficient_resources[0].sample_id)
+                else:
+                    if len(player_samples) == 0:
+                        return "GOTO SAMPLES"
+                    else:
+                        return "GOTO MOLECULES"
+            # TODO: get cloud infos :D
+            # aviable_ids = [all_samples.sample_id for all_samples in samples if all_samples.carried_by is -1]
+            # answer = "CONNECT " + str(aviable_ids[0])
+        elif players[0].target == "MOLECULES":
+            needed_molecules = [
+                [player_sample.cost[0] - players[0].expertise[0], player_sample.cost[1] - players[0].expertise[1],
+                 player_sample.cost[2] - players[0].expertise[2], player_sample.cost[3] - players[0].expertise[3],
+                 player_sample.cost[4] - players[0].expertise[4]] for player_sample in player_samples]
+            needed_molecules = [molecule for molecules in needed_molecules for molecule in molecules if molecule >= 0]
+            nr_needed_molecules = np.sum(needed_molecules)
+            nr_molecules_player = np.sum(players[0].storage)
+            if nr_molecules_player == 10 or nr_molecules_player >= nr_needed_molecules:
+                return "GOTO LABORATORY"
+            else:
+                for index_recipe, recipe_nr in enumerate(range(len(player_samples))):
+                    for index_type, molecule_type in enumerate(range(5)):
+                        needed_molecules_of_type = np.sum(
+                            [player_samples[indexes_recipe].cost[index_type] - players[0].expertise[index_type] for
+                             indexes_recipe, i in enumerate(range(index_recipe + 1))])
+                        if needed_molecules_of_type > players[0].storage[index_type]:
+                            return "CONNECT " + str(chr(65 + index_type))
+
+        elif players[0].target == "LABORATORY":
+            player_samples = np.asarray(player_samples)
+            if not player_samples.any():
+                return "GOTO SAMPLES"
+            else:
+                next_sample_cost = np.sum(
+                    [cost - players[0].expertise[index] for index, cost in enumerate(player_samples[0].cost) if
+                     (cost - players[0].expertise[index]) > 0])
+                if np.sum(players[0].storage) >= next_sample_cost:
+                    return "CONNECT " + str(player_samples[0].sample_id)
+                else:
+                    return "GOTO MOLECULES"
+        elif players[0].target == "SAMPLES":
+            if len(player_samples) < 3:
+                return "CONNECT 1"  # TODO: connect to coresponding lvl
+            else:
+                return "GOTO DIAGNOSIS"
+        else:
+            return "GOTO SAMPLES"
+        
 
 project_count = int(input())
 for i in range(project_count):
     a, b, c, d, e = [int(j) for j in input().split()]
-
-players = [Player(0), Player(1)]
-samples = []
-available = []
 
 while True:
     for i in range(2):
@@ -94,60 +159,8 @@ while True:
     samples.clear()
     samples = new_samples.copy()
 
-    answer = ""
-    player_samples = players[0].get_carrying_samples()
-    if players[0].eta > 0:
-        answer = "WAIT"
-    elif players[0].target == "DIAGNOSIS":
-        unidentified_player_sample = [unidentified_player_sample for unidentified_player_sample in player_samples if not unidentified_player_sample.identified]
-        if len(unidentified_player_sample) > 0:
-            answer = "CONNECT " + str(unidentified_player_sample[0].sample_id)
-            unidentified_player_sample[0].identified = True
-        else:
-            samples_with_insufficient_resources = [sample for sample in player_samples if players[0].check_insufficient_resources(sample, available)]
-            samples_with_insufficient_resources = np.asarray(samples_with_insufficient_resources)
-            if samples_with_insufficient_resources.any():
-                answer = "CONNECT " + str(samples_with_insufficient_resources[0].sample_id)
-            else:
-                if len(player_samples) == 0:
-                    answer = "GOTO SAMPLES"
-                else:
-                    answer = "GOTO MOLECULES"
-        # TODO: get cloud infos :D
-        # aviable_ids = [all_samples.sample_id for all_samples in samples if all_samples.carried_by is -1]
-        # answer = "CONNECT " + str(aviable_ids[0])
-    elif players[0].target == "MOLECULES":
-        needed_molecules = [[player_sample.cost[0]-players[0].expertise[0], player_sample.cost[1]-players[0].expertise[1], player_sample.cost[2]-players[0].expertise[2], player_sample.cost[3]-players[0].expertise[3], player_sample.cost[4]-players[0].expertise[4]] for player_sample in player_samples]
-        needed_molecules = [molecule for molecules in needed_molecules for molecule in molecules if molecule >= 0]
-        nr_needed_molecules = np.sum(needed_molecules)
-        nr_molecules_player = np.sum(players[0].storage)
-        if nr_molecules_player == 10 or nr_molecules_player >= nr_needed_molecules:
-            answer = "GOTO LABORATORY"
-        else:
-            for index_recipe, recipe_nr in enumerate(range(len(player_samples))):
-                for index_type, molecule_type in enumerate(range(5)):
-                    needed_molecules_ofType = np.sum([player_samples[indexes_recipe].cost[index_type]-players[0].expertise[index_type] for indexes_recipe, i in enumerate(range(index_recipe+1))])
-                    if needed_molecules_ofType > players[0].storage[index_type]:
-                        if answer == "":
-                            answer = "CONNECT " + str(chr(65+index_type)) # TODO: break? XD LOLOLOLOLOLOLOLOLOL
+    answer = Statemachine.state_machine()
 
-    elif players[0].target == "LABORATORY":
-        player_samples = np.asarray(player_samples)
-        if not player_samples.any():
-            answer = "GOTO SAMPLES"
-        else:
-            next_sample_cost = np.sum([cost - players[0].expertise[index] for index, cost in enumerate(player_samples[0].cost) if (cost - players[0].expertise[index]) > 0])
-            if np.sum(players[0].storage) >= next_sample_cost:
-                answer = "CONNECT " + str(player_samples[0].sample_id)
-            else:
-                answer = "GOTO MOLECULES"
-    elif players[0].target == "SAMPLES":
-        if len(player_samples) < 3:
-            answer = "CONNECT 1"  # TODO: connect to coresponding lvl
-        else:
-            answer = "GOTO DIAGNOSIS"
-    else:
-        answer = "GOTO SAMPLES"
     # Write an action using print
     # To debug: print("Debug messages...", file=sys.stderr)
 
