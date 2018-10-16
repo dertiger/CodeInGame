@@ -39,8 +39,8 @@ class Player:
 
     def get_private_cost_of_sample(self, sample: Sample) -> list:
         effective_costs = []
-        for index, i in range(5):
-            effective_cost = sample.cost[i] - self.expertise[i]
+        for index in range(5):
+            effective_cost = sample.cost[index] - self.expertise[index]
             if effective_cost < 0:
                 effective_costs.append(0)
             else:
@@ -49,11 +49,31 @@ class Player:
 
     def check_insufficient_resources(self, sample: Sample):
         for i in range(5):
-            print("cost resource: " + str(i) + " amount: " + str(sample.cost[i]), file=sys.stderr)
-            print("aviable  resource: " + str(i) + " amount: " + str(available[i]), file=sys.stderr)
             if sample.cost[i] > (available[i] + self.expertise[i]):
                 return True
         return False
+
+    def storage_full(self) -> bool:
+        if sum(self.storage) == 10:
+            return True
+        return False
+
+    def all_molecules_for_sample(self, sample: Sample):
+        cost = self.get_private_cost_of_sample(sample)
+        for index in range(5):
+            if cost[index] > self.storage[index]:
+                return False
+        return True
+
+    def all_molecules_for_samples(self):
+        carrying_samples = self.get_carrying_samples()
+        costs = np.zeros(5, dtype=int)
+        for carrying_sample in carrying_samples:
+            costs += self.get_private_cost_of_sample(carrying_sample)
+        for index in range(5):
+            if costs[index] > self.storage[index]:
+                return False
+        return True
 
 
 players = [Player(0), Player(1)]
@@ -76,6 +96,7 @@ class Statemachine:
             return Statemachine.state_samples()
         else:
             return Statemachine.state_init_state()
+
     @staticmethod
     def state_init_state() -> str:
         return "GOTO SAMPLES"
@@ -83,6 +104,17 @@ class Statemachine:
     @staticmethod
     def state_wait() -> str:
         return "WAIT"
+
+    @staticmethod
+    def state_samples() -> str:
+        player_samples = players[0].get_carrying_samples()
+        if len(player_samples) < 3:
+            if sum(players[0].expertise) < 5:
+                return "CONNECT 1"  # TODO: connect to coresponding lvl
+            else:
+                return "CONNECT 2"
+        else:
+            return "GOTO DIAGNOSIS"
 
     @staticmethod
     def state_diagnosis() -> str:
@@ -98,35 +130,28 @@ class Statemachine:
             samples_with_insufficient_resources = np.asarray(samples_with_insufficient_resources)
             if samples_with_insufficient_resources.any():
                 return "CONNECT " + str(samples_with_insufficient_resources[0].sample_id)
+            elif len(player_samples) == 0:
+                return "GOTO SAMPLES"
             else:
-                if len(player_samples) == 0:
-                    return "GOTO SAMPLES"
-                else:
-                    return "GOTO MOLECULES"
-        # TODO: get cloud infos :D
+                return "GOTO MOLECULES"
+        # TODO: get cloud infos :D / get samples with sufficient resources
         # aviable_ids = [all_samples.sample_id for all_samples in samples if all_samples.carried_by is -1]
         # answer = "CONNECT " + str(aviable_ids[0])
 
     @staticmethod
     def state_molecules() -> str:
         player_samples = players[0].get_carrying_samples()
-        needed_molecules = [
-            [player_sample.cost[0] - players[0].expertise[0], player_sample.cost[1] - players[0].expertise[1],
-             player_sample.cost[2] - players[0].expertise[2], player_sample.cost[3] - players[0].expertise[3],
-             player_sample.cost[4] - players[0].expertise[4]] for player_sample in player_samples]
-        needed_molecules = [molecule for molecules in needed_molecules for molecule in molecules if molecule >= 0]
-        nr_needed_molecules = np.sum(needed_molecules)
-        nr_molecules_player = np.sum(players[0].storage)
-        if nr_molecules_player == 10 or nr_molecules_player >= nr_needed_molecules:
+        if players[0].storage_full() or players[0].all_molecules_for_samples():
             return "GOTO LABORATORY"
         else:
-            for index_recipe, recipe_nr in enumerate(range(len(player_samples))):
-                for index_type, molecule_type in enumerate(range(5)):
-                    needed_molecules_of_type = np.sum(
-                        [player_samples[indexes_recipe].cost[index_type] - players[0].expertise[index_type] for
-                         indexes_recipe, i in enumerate(range(index_recipe + 1))])
-                    if needed_molecules_of_type > players[0].storage[index_type]:
-                        return "CONNECT " + str(chr(65 + index_type))
+            costs = np.zeros(5, dtype=int)
+            for sample in player_samples:
+                costs += players[0].get_private_cost_of_sample(sample)
+                for index in range(5):
+                    if costs[index] > players[0].storage[index]:
+                        if available[index] > 0:
+                            return "CONNECT " + str(chr(65+index))
+        return "GOTO LABORATORY"
 
     @staticmethod
     def state_laboratory() -> str:
@@ -135,21 +160,10 @@ class Statemachine:
         if not player_samples.any():
             return "GOTO SAMPLES"
         else:
-            next_sample_cost = np.sum(
-                [cost - players[0].expertise[index] for index, cost in enumerate(player_samples[0].cost) if
-                 (cost - players[0].expertise[index]) > 0])
-            if np.sum(players[0].storage) >= next_sample_cost:
-                return "CONNECT " + str(player_samples[0].sample_id)
-            else:
-                return "GOTO MOLECULES"
-
-    @staticmethod
-    def state_samples() -> str:
-        player_samples = players[0].get_carrying_samples()
-        if len(player_samples) < 3:
-            return "CONNECT 1"  # TODO: connect to coresponding lvl
-        else:
-            return "GOTO DIAGNOSIS"
+            for player_sample in player_samples:
+                if players[0].all_molecules_for_sample(player_sample):
+                    return "CONNECT " + str(player_sample.sample_id)
+            return "GOTO MOLECULES"
 
 
 project_count = int(input())
