@@ -16,9 +16,6 @@ class Sample:
         self.cost = []
         self.identified = False
 
-    def check_insuffizient_resources(self, player, stock):
-        i = 0  # TODO:
-
 
 class Player:
     def __init__(self, playerNr) -> None:
@@ -50,16 +47,14 @@ class Player:
                 effective_costs.append(effective_cost)
         return effective_costs
 
-
-
-class Checker:
-    def check_insuficent_resources(sample: Sample, available) -> bool:
+    def check_insufficient_resources(self, player_sample: Sample, available):
         for i in range(5):
-            print("cost resource: " + str(i) + " amount: " + str(sample.cost[i]), file=sys.stderr)
+            print("cost resource: " + str(i) + " amount: " + str(player_sample.cost[i]), file=sys.stderr)
             print("aviable  resource: " + str(i) + " amount: " + str(available[i]), file=sys.stderr)
-            if sample.cost[i] > (available[i] + players[0].expertise[i]):
+            if player_sample.cost[i] > (available[i] + self.expertise[i]):
                 return True
         return False
+
 
 project_count = int(input())
 for i in range(project_count):
@@ -67,11 +62,11 @@ for i in range(project_count):
 
 players = [Player(0), Player(1)]
 samples = []
+available = []
 
 while True:
     for i in range(2):
         target, eta, score, storage_a, storage_b, storage_c, storage_d, storage_e, expertise_a, expertise_b, expertise_c, expertise_d, expertise_e = input().split()
-        print(target, file=sys.stderr)
         players[i].target = target
         players[i].eta = int(eta)
         players[i].score = int(score)
@@ -109,10 +104,10 @@ while True:
             answer = "CONNECT " + str(unidentified_player_sample[0].sample_id)
             unidentified_player_sample[0].identified = True
         else:
-            samples_with_insuficent_resources = [sample for sample in player_samples if Checker.check_insuficent_resources(sample, available)]
-            samples_with_insuficent_resources = np.asarray(samples_with_insuficent_resources)
-            if samples_with_insuficent_resources.any():
-                answer = "CONNECT " + str(samples_with_insuficent_resources[0].sample_id)
+            samples_with_insufficient_resources = [sample for sample in player_samples if players[0].check_insufficient_resources(sample, available)]
+            samples_with_insufficient_resources = np.asarray(samples_with_insufficient_resources)
+            if samples_with_insufficient_resources.any():
+                answer = "CONNECT " + str(samples_with_insufficient_resources[0].sample_id)
             else:
                 if len(player_samples) == 0:
                     answer = "GOTO SAMPLES"
