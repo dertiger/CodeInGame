@@ -15,6 +15,21 @@ class Sample:
         self.health = 0
         self.cost = []
         self.identified = False
+        self.expertise_gain_value = 0
+
+    def get_expertise_gain_in_array(self):
+        expertise_gain_array = np.zeros(5, dtype=int)
+        if 0 <= self.expertise_gain <= 4:
+            expertise_gain_array[self.expertise_gain] = 1
+        return expertise_gain_array
+
+    def calc_expertise_gain_value(self, samples_to_check, expertise):
+        self.expertise_gain_value = 0
+        for sample in samples_to_check:
+            if self != sample:
+                if 0 <= self.expertise_gain <= 4:
+                    if sample.cost[self.expertise_gain] - expertise[self.expertise_gain] > 0:
+                        self.expertise_gain_value += 1
 
 
 class Player:
@@ -30,6 +45,18 @@ class Player:
     def get_carrying_samples(self) -> list:
         return [p_samples for p_samples in samples if p_samples.carried_by == self.player]
 
+    def get_carrying_samples_sorted(self):
+        carrying_samples = self.get_carrying_samples()
+        print("unsorted: ", file=sys.stderr)
+        for carrying_sample in carrying_samples:
+            print(carrying_sample.sample_id, file=sys.stderr)
+            carrying_sample.calc_expertise_gain_value(carrying_samples, self.expertise)
+        sorted_carrying_samples = sorted(carrying_samples, key=lambda sample: sample.expertise_gain_value, reverse=True)
+        print("sorted: ", file=sys.stderr)
+        for carrying_sample in sorted_carrying_samples:
+            print(carrying_sample.sample_id, file=sys.stderr)
+        return sorted_carrying_samples
+
     def check_available_storage(self, player_sample: Sample) -> bool:
         effective_cost = self.get_private_cost_of_sample(player_sample)
         for index, type in range(5):
@@ -37,10 +64,10 @@ class Player:
                 return False
         return True
 
-    def get_private_cost_of_sample(self, sample: Sample) -> list:
+    def get_private_cost_of_sample(self, sample: Sample, additional_expertise=[0, 0, 0, 0, 0]) -> list:
         effective_costs = []
         for index in range(5):
-            effective_cost = sample.cost[index] - self.expertise[index]
+            effective_cost = sample.cost[index] - self.expertise[index] - additional_expertise[index]
             if effective_cost < 0:
                 effective_costs.append(0)
             else:
@@ -66,10 +93,12 @@ class Player:
         return True
 
     def all_molecules_for_samples(self):
-        carrying_samples = self.get_carrying_samples()
+        carrying_samples = self.get_carrying_samples_sorted()
         costs = np.zeros(5, dtype=int)
+        additional_expertise = np.zeros(5, dtype=int)
         for carrying_sample in carrying_samples:
-            costs += self.get_private_cost_of_sample(carrying_sample)
+            costs += self.get_private_cost_of_sample(carrying_sample, additional_expertise)
+            additional_expertise += carrying_sample.get_expertise_gain_in_array()
         for index in range(5):
             if costs[index] > self.storage[index]:
                 return False
@@ -118,7 +147,7 @@ class Statemachine:
 
     @staticmethod
     def state_diagnosis() -> str:
-        player_samples = players[0].get_carrying_samples()
+        player_samples = players[0].get_carrying_samples_sorted()
         unidentified_player_sample = [unidentified_player_sample for unidentified_player_sample in player_samples if
                                       not unidentified_player_sample.identified]
         if len(unidentified_player_sample) > 0:
@@ -129,6 +158,7 @@ class Statemachine:
                                                    players[0].check_insufficient_resources(sample)]
             samples_with_insufficient_resources = np.asarray(samples_with_insufficient_resources)
             if samples_with_insufficient_resources.any():
+                print(samples_with_insufficient_resources[0].cost, file=sys.stderr)
                 return "CONNECT " + str(samples_with_insufficient_resources[0].sample_id)
             elif len(player_samples) == 0:
                 return "GOTO SAMPLES"
@@ -140,13 +170,15 @@ class Statemachine:
 
     @staticmethod
     def state_molecules() -> str:
-        player_samples = players[0].get_carrying_samples()
+        player_samples = players[0].get_carrying_samples_sorted()
         if players[0].storage_full() or players[0].all_molecules_for_samples():
             return "GOTO LABORATORY"
         else:
             costs = np.zeros(5, dtype=int)
+            additional_expertise = np.zeros(5, dtype=int)
             for sample in player_samples:
-                costs += players[0].get_private_cost_of_sample(sample)
+                costs += players[0].get_private_cost_of_sample(sample, additional_expertise)
+                additional_expertise += sample.get_expertise_gain_in_array()
                 for index in range(5):
                     if costs[index] > players[0].storage[index]:
                         if available[index] > 0:
@@ -155,7 +187,7 @@ class Statemachine:
 
     @staticmethod
     def state_laboratory() -> str:
-        player_samples = players[0].get_carrying_samples()
+        player_samples = players[0].get_carrying_samples_sorted()
         player_samples = np.asarray(player_samples)
         if not player_samples.any():
             return "GOTO SAMPLES"
@@ -188,6 +220,7 @@ while True:
         new_sample.sample_id = int(sample_id)
         new_sample.carried_by = int(carried_by)
         new_sample.rank = int(rank)
+        new_sample.expertise_gain = ord(expertise_gain) - 65
         new_sample.health = int(health)
         new_sample.cost = [int(cost_a), int(cost_b), int(cost_c), int(cost_d), int(cost_e)]
         old_sample = [old_sample for old_sample in samples if old_sample.sample_id == new_sample.sample_id]
