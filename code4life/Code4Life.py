@@ -74,13 +74,6 @@ class Player:
     def get_best_cloud_sample_for_my_samples(self) -> Sample:
         return self.get_best_cloud_sample(self.get_carrying_samples_sorted())
 
-    def check_available_storage(self, player_sample: Sample) -> bool:
-        effective_cost = self.get_private_cost_of_sample(player_sample)
-        for index, type in range(5):
-            if effective_cost[type] > self.storage[type]:
-                return False
-        return True
-
     def get_private_cost_of_sample(self, sample: Sample, additional_expertise=[0, 0, 0, 0, 0]) -> list:
         effective_costs = []
         for index in range(5):
@@ -105,7 +98,7 @@ class Player:
 
     def check_insufficient_resources(self, sample: Sample, additional_expertise=[0, 0, 0, 0, 0]):
         for i in range(5):
-            if sample.cost[i] > (available[i] + self.expertise[i] + additional_expertise[i]):
+            if sample.cost[i]-self.storage[i] > (available[i] + self.expertise[i] + additional_expertise[i]):
                 return True
         return False
 
@@ -186,8 +179,13 @@ class Statemachine:
             unidentified_player_sample[0].identified = True
             return "CONNECT " + str(unidentified_player_sample[0].sample_id)
         else:
-            samples_with_insufficient_resources = [sample for sample in player_samples if
-                                                   players[0].check_insufficient_resources(sample)]
+            samples_with_insufficient_resources = []
+            additional_expertise = np.zeros(5, dtype=int)
+            for sample in player_samples:
+                if players[0].check_insufficient_resources(sample, additional_expertise):
+                    samples_with_insufficient_resources.append(sample)
+                else:
+                    additional_expertise += sample.get_expertise_gain_in_array()
             samples_with_insufficient_resources = np.asarray(samples_with_insufficient_resources)
             if samples_with_insufficient_resources.any():
                 print(samples_with_insufficient_resources[0].cost, file=sys.stderr)
@@ -213,13 +211,16 @@ class Statemachine:
         player_samples = players[0].get_carrying_samples_sorted()
         if players[0].storage_full() or players[0].all_molecules_for_samples():
             return "GOTO LABORATORY"
+        locked_samples = [locked_sample for locked_sample in player_samples if players[0].check_insufficient_resources(locked_sample)]
+        if len(locked_samples) >= len(player_samples):
+            return "GOTO DIAGNOSIS"
         else:
             costs = np.zeros(5, dtype=int)
             additional_expertise = np.zeros(5, dtype=int)
             for sample in player_samples:
                 costs += players[0].get_private_cost_of_sample(sample, additional_expertise)
-                
-                additional_expertise += sample.get_expertise_gain_in_array()
+                if players[0].all_molecules_for_sample(sample):
+                    additional_expertise += sample.get_expertise_gain_in_array()
                 for index in range(5):
                     if costs[index] > players[0].storage[index]:
                         if available[index] > 0:
@@ -236,6 +237,8 @@ class Statemachine:
             for player_sample in player_samples:
                 if players[0].all_molecules_for_sample(player_sample):
                     return "CONNECT " + str(player_sample.sample_id)
+            if len(player_samples) <= 1:
+                return "GOTO SAMPLES"
             return "GOTO MOLECULES"
 
 
