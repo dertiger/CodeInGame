@@ -47,15 +47,32 @@ class Player:
 
     def get_carrying_samples_sorted(self):
         carrying_samples = self.get_carrying_samples()
-        print("unsorted: ", file=sys.stderr)
         for carrying_sample in carrying_samples:
-            print(carrying_sample.sample_id, file=sys.stderr)
             carrying_sample.calc_expertise_gain_value(carrying_samples, self.expertise)
         sorted_carrying_samples = sorted(carrying_samples, key=lambda sample: sample.expertise_gain_value, reverse=True)
-        print("sorted: ", file=sys.stderr)
-        for carrying_sample in sorted_carrying_samples:
-            print(carrying_sample.sample_id, file=sys.stderr)
+
         return sorted_carrying_samples
+
+    def get_cloud_samples_highest_health_first(self, min_health=0):
+        cloud_samples = [cloud_sample for cloud_sample in samples if cloud_sample.carried_by == -1 if cloud_sample.health >= min_health]
+        return sorted(cloud_samples, key=lambda sample: sample.health, reverse=True)
+
+    def get_best_cloud_sample(self, base_samples) -> Sample:
+        if len(base_samples) < 3:
+            cloud_samples = self.get_cloud_samples_highest_health_first()
+            my_existing_costs = self.get_private_cost_of_samples(base_samples)
+            my_expertise = np.zeros(5,dtype=int)
+            for base_sample in base_samples:
+                my_expertise += base_sample.get_expertise_gain_in_array()
+            for cloud_sample in cloud_samples:
+                if not self.check_insufficient_resources(cloud_sample, my_expertise):
+                    full_cost = my_existing_costs + self.get_private_cost_of_sample(cloud_sample, my_expertise)
+                    if sum(full_cost) <= 10:
+                        return cloud_sample
+        return None
+
+    def get_best_cloud_sample_for_my_samples(self) -> Sample:
+        return self.get_best_cloud_sample(self.get_carrying_samples_sorted())
 
     def check_available_storage(self, player_sample: Sample) -> bool:
         effective_cost = self.get_private_cost_of_sample(player_sample)
@@ -74,9 +91,21 @@ class Player:
                 effective_costs.append(effective_cost)
         return effective_costs
 
-    def check_insufficient_resources(self, sample: Sample):
+    def get_private_cost_of_samples(self, samples):
+        cost = np.zeros(5, dtype=int)
+        additional_expertise = np.zeros(5, dtype=int)
+        for sample_sorted in samples:
+            cost += self.get_private_cost_of_sample(sample_sorted, additional_expertise)
+            additional_expertise += sample_sorted.get_expertise_gain_in_array()
+        return cost
+
+    def get_private_cost_of_my_samples(self):
+        samples_sorted = self.get_carrying_samples_sorted()
+        return self.get_private_cost_of_samples(samples_sorted)
+
+    def check_insufficient_resources(self, sample: Sample, additional_expertise=[0, 0, 0, 0, 0]):
         for i in range(5):
-            if sample.cost[i] > (available[i] + self.expertise[i]):
+            if sample.cost[i] > (available[i] + self.expertise[i] + additional_expertise[i]):
                 return True
         return False
 
@@ -140,8 +169,11 @@ class Statemachine:
         if len(player_samples) < 3:
             if sum(players[0].expertise) < 5:
                 return "CONNECT 1"  # TODO: connect to coresponding lvl
-            else:
+            elif sum(players[0].expertise) < 14:
                 return "CONNECT 2"
+            else:
+                return "CONNECT 3"
+
         else:
             return "GOTO DIAGNOSIS"
 
@@ -162,7 +194,15 @@ class Statemachine:
                 return "CONNECT " + str(samples_with_insufficient_resources[0].sample_id)
             elif len(player_samples) == 0:
                 return "GOTO SAMPLES"
+            elif len(player_samples) < 3:
+                print("CHECK CLOUD...", file=sys.stderr)
+                best_cloud_sample = players[0].get_best_cloud_sample_for_my_samples()
+                if best_cloud_sample is not None:
+                    return "CONNECT " + str(best_cloud_sample.sample_id)
+                else:
+                    return "GOTO MOLECULES"
             else:
+                print("MAX samples found", file=sys.stderr)
                 return "GOTO MOLECULES"
         # TODO: get cloud infos :D / get samples with sufficient resources
         # aviable_ids = [all_samples.sample_id for all_samples in samples if all_samples.carried_by is -1]
@@ -178,6 +218,7 @@ class Statemachine:
             additional_expertise = np.zeros(5, dtype=int)
             for sample in player_samples:
                 costs += players[0].get_private_cost_of_sample(sample, additional_expertise)
+                
                 additional_expertise += sample.get_expertise_gain_in_array()
                 for index in range(5):
                     if costs[index] > players[0].storage[index]:
