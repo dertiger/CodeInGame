@@ -232,15 +232,25 @@ class Statemachine:
         player_samples = players[0].get_carrying_samples_sorted()
         player_samples = np.asarray(player_samples)
         if not player_samples.any():
-            return "GOTO SAMPLES"
+            return Statemachine.check_cloud_or_samples()
         else:
             for player_sample in player_samples:
                 if players[0].all_molecules_for_sample(player_sample):
                     return "CONNECT " + str(player_sample.sample_id)
             if len(player_samples) <= 1:
-                return "GOTO SAMPLES"
+                return Statemachine.check_cloud_or_samples()
             return "GOTO MOLECULES"
 
+    @staticmethod
+    def check_cloud_or_samples() -> str:
+        player_samples = players[0].get_carrying_samples_sorted()
+        cloud_sample = players[0].get_best_cloud_sample_for_my_samples()
+        while cloud_sample is not None:
+            player_samples.append(cloud_sample)
+            cloud_sample = players[0].get_best_cloud_sample(player_samples)
+        if len(player_samples) >= 2:
+            return "GOTO DIAGNOSIS"
+        return "GOTO SAMPLES"
 
 project_count = int(input())
 for i in range(project_count):
