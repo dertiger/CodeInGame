@@ -190,14 +190,14 @@ class Statemachine:
             if samples_with_insufficient_resources.any():
                 print(samples_with_insufficient_resources[0].cost, file=sys.stderr)
                 return "CONNECT " + str(samples_with_insufficient_resources[0].sample_id)
-            elif len(player_samples) == 0:
-                return "GOTO SAMPLES"
             elif len(player_samples) < 3:
                 print("CHECK CLOUD...", file=sys.stderr)
                 best_cloud_sample = players[0].get_best_cloud_sample_for_my_samples()
                 if best_cloud_sample is not None:
                     return "CONNECT " + str(best_cloud_sample.sample_id)
                 else:
+                    if len(player_samples) == 0:
+                        return "GOTO SAMPLES"
                     return "GOTO MOLECULES"
             else:
                 print("MAX samples found", file=sys.stderr)
