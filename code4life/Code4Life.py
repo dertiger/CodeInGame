@@ -96,6 +96,19 @@ class Player:
         samples_sorted = self.get_carrying_samples_sorted()
         return self.get_private_cost_of_samples(samples_sorted)
 
+    def get_private_cost_of_carryable_samples(self):
+        samples_sorted = self.get_carrying_samples_sorted()
+        samples_with_low_enough_cost = []
+        cost = np.zeros(5, dtype=int)
+        for sample_sorted in samples_sorted:
+            samples_with_low_enough_cost.append(sample_sorted)
+            cost_new = self.get_private_cost_of_samples(samples_with_low_enough_cost)
+            if cost_new > 10:
+                return cost
+            cost = cost_new.copy()
+        return cost
+
+
     def check_insufficient_resources(self, sample: Sample, additional_expertise=[0, 0, 0, 0, 0]):
         for i in range(5):
             if sample.cost[i]-self.storage[i] > (available[i] + self.expertise[i] + additional_expertise[i]):
@@ -130,7 +143,7 @@ class Player:
 players = [Player(0), Player(1)]
 samples = []
 available = []
-
+roundsLeft = 200
 
 class Statemachine:
     @staticmethod
@@ -160,9 +173,9 @@ class Statemachine:
     def state_samples() -> str:
         player_samples = players[0].get_carrying_samples()
         if len(player_samples) < 3:
-            if sum(players[0].expertise) < 5:
+            if sum(players[0].expertise) < 6:
                 return "CONNECT 1"  # TODO: connect to coresponding lvl
-            elif sum(players[0].expertise) < 14:
+            elif sum(players[0].expertise) < 16:
                 return "CONNECT 2"
             else:
                 return "CONNECT 3"
@@ -211,6 +224,9 @@ class Statemachine:
         player_samples = players[0].get_carrying_samples_sorted()
         if players[0].storage_full() or players[0].all_molecules_for_samples():
             return "GOTO LABORATORY"
+        if roundsLeft <= 5:
+            print("seed only 5 rounds left", file=sys.stderr)
+            return "GOTO LABORATORY"
         locked_samples = [locked_sample for locked_sample in player_samples if players[0].check_insufficient_resources(locked_sample)]
         if len(locked_samples) >= len(player_samples):
             return "GOTO DIAGNOSIS"
@@ -248,7 +264,7 @@ class Statemachine:
         while cloud_sample is not None:
             player_samples.append(cloud_sample)
             cloud_sample = players[0].get_best_cloud_sample(player_samples)
-        if len(player_samples) >= 2:
+        if len(player_samples) >= 3:
             return "GOTO DIAGNOSIS"
         return "GOTO SAMPLES"
 
@@ -257,6 +273,7 @@ for i in range(project_count):
     a, b, c, d, e = [int(j) for j in input().split()]
 
 while True:
+    roundsLeft -= 1
     for i in range(2):
         target, eta, score, storage_a, storage_b, storage_c, storage_d, storage_e, expertise_a, expertise_b, expertise_c, expertise_d, expertise_e = input().split()
         players[i].target = target
