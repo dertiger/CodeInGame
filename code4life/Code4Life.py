@@ -103,7 +103,7 @@ class Player:
         for sample_sorted in samples_sorted:
             samples_with_low_enough_cost.append(sample_sorted)
             cost_new = self.get_private_cost_of_samples(samples_with_low_enough_cost)
-            if cost_new > 10:
+            if sum(cost_new) > 10:
                 return cost
             cost = cost_new.copy()
         return cost
@@ -231,6 +231,16 @@ class Statemachine:
         if len(locked_samples) >= len(player_samples):
             return "GOTO DIAGNOSIS"
         else:
+            # TODO: wenn beide gleiche resourcen brauchen zuerst die nehmen
+            my_costs_under_ten = players[0].get_private_cost_of_carryable_samples()
+            enemy_costs = players[1].get_private_cost_of_my_samples()
+            for index in range(5):
+                my_need_index = my_costs_under_ten[index] - players[0].storage[index]
+                enemy_need_index = enemy_costs[index] - players[1].storage[index]
+                if my_need_index > 0:
+                    if (my_need_index + enemy_need_index) > available[index]:
+                        if available[index] >= 1:
+                            return "CONNECT " + str(chr(65+index))
             costs = np.zeros(5, dtype=int)
             additional_expertise = np.zeros(5, dtype=int)
             for sample in player_samples:
